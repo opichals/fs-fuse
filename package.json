@@ -22,7 +22,7 @@
   },
   "homepage": "https://github.com/piranna/fs-fuse#readme",
   "dependencies": {
-    "fuse-native": "^2.2.6",
+    "fuse-native": "opichals/fuse-native#macfuse-usr-local-lib-libfuse.dylib",
     "get-stream": "^5.1.0",
     "parse-mount-argv": "^0.0.1"
   }
