@@ -1,9 +1,4 @@
-const fuse      = require('fuse-native')
 const getStream = require('get-stream').buffer
-
-const ENOSYS = fuse.ENOSYS
-const errno  = new fuse('/tmp/fuse-mount', {}, {}).errno
-
 
 const direct_mapping = ['chmod', 'chown', 'link', 'mkdir', 'open', 'readdir',
                         'readlink', 'rmdir', 'rename', 'symlink', 'unlink']
@@ -14,44 +9,64 @@ const xnon_standard = ['fuse_access', 'create', 'destroy', 'flush', 'fsyncdir',
 const non_standard = [];
 
 
-function fsCallback(error, ...args)
-{
-  this(error && errno(error.code), ...args)
-}
-
-/** Do the file truncation by writting at the new file size position
- *
- * Only valid for file size increases
- */
-function truncate(createWriteStream, path, fd, size, cb)
-{
-  return function(error, stats)
-  {
-    if(error)
-    {
-      if(error.code !== 'ENOENT') return cb(error)
-
-      // File don't exists, create it of the defined size
-      return createWriteStream(path, {fd, start: size})
-      .end('', fsCallback.bind(cb))
-      .once('error', fsCallback.bind(cb))
-    }
-
-    // File truncation is not supported
-    if(size < stats.size) return cb(ENOSYS)
-
-    // Expand file to desired size
-    createWriteStream(path, {fd, flags: 'r+', start: size})
-    .end('', fsCallback.bind(cb))
-    .once('error', fsCallback.bind(cb))
-  }
-}
-
-
 function FsFuse(fs)
 {
   if(!(this instanceof FsFuse)) return new FsFuse(fs)
 
+  const errno = function(codeName) {
+    // for the one from fuse-native.errno
+    if (this.errno) return this.errno(codeName);
+
+    // locally cached nodejs getSystemErrorMap errnos
+    if (this.errnos) return this.errnos[codeName];
+
+    this.errnos = {};
+    require('util').getSystemErrorMap().forEach(function ([name, desc], code) {
+        this.errnos[name] = code;
+    }, this);
+    return this.errnos[codeName];
+  }.bind(this)
+  Object.defineProperty(this, 'ENOSYS', {
+      get: function() {
+          const ENOSYS = errno('ENOSYS');
+          this.ENOSYS = ENOSYS;
+          return ENOSYS;
+      }
+  });
+
+
+  function fsCallback(error, ...args)
+  {
+    this(error && errno(error.code), ...args)
+  }
+
+  /** Do the file truncation by writting at the new file size position
+   *
+   * Only valid for file size increases
+   */
+  function truncate(createWriteStream, path, fd, size, cb)
+  {
+    return function(error, stats)
+    {
+      if(error)
+      {
+        if(error.code !== 'ENOENT') return cb(error)
+
+        // File don't exists, create it of the defined size
+        return createWriteStream(path, {fd, start: size})
+        .end('', fsCallback.bind(cb))
+        .once('error', fsCallback.bind(cb))
+      }
+
+      // File truncation is not supported
+      if(size < stats.size) return cb(ENOSYS)
+
+      // Expand file to desired size
+      createWriteStream(path, {fd, flags: 'r+', start: size})
+      .end('', fsCallback.bind(cb))
+      .once('error', fsCallback.bind(cb))
+    }
+  }
 
   function wrapFd(path, func, cb, ...args)
   {
@@ -123,8 +138,14 @@ function FsFuse(fs)
     this.fgetattr(path, fd, truncate(fs.createWriteStream, path, fd, size, cb))
   }
 
-  this.read = function(path, fd, buffer, length, position, cb)
+  this.read = function(path, fd, buffer, length, position, fuse_cb)
   {
+    // the `fuse-bindings` don't provide a way to notify of errors.
+    // More info at https://github.com/mafintosh/fuse-bindings/issues/10
+    function cb(err, len) {
+      return err ? fuse_cb(-1) : fuse_cb(len);
+    }
+
     if(fs.read)
       return fs.read(fd, buffer, 0, length, position, fsCallback.bind(cb))
 
@@ -136,15 +157,18 @@ function FsFuse(fs)
     .then(function(data)
     {
       data.copy(buffer)
-      // This should be `cb(null, data.length)`, but `fuse-bindings` don't
-      // provide a way to notify of errors. More info at
-      // https://github.com/mafintosh/fuse-bindings/issues/10
-      cb(data.length)
+      cb(null, data.length)
     }, fsCallback.bind(cb))
   }
 
-  this.write = function(path, fd, buffer, length, position, cb)
+  this.write = function(path, fd, buffer, length, position, fuse_cb)
   {
+    // the `fuse-bindings` don't provide a way to notify of errors.
+    // More info at https://github.com/mafintosh/fuse-bindings/issues/10
+    function cb(err, len) {
+      return err ? fuse_cb(-1) : fuse_cb(len);
+    }
+
     if(fs.write)
       return fs.write(fd, buffer, 0, length, position, fsCallback.bind(cb))
 
@@ -161,6 +185,13 @@ function FsFuse(fs)
       .end(buffer, cbLength)
       .once('error', fsCallback.bind(cb))
     })
+  }
+
+  this.create = function (path, flags, cb) {
+    // FIXME? would this work when we do the fs.createWriteStream later on?
+    if(!fs.open || !fs.write) return cb(ENOSYS)
+
+    fs.open(path, 'w+', fsCallback.bind(cb));
   }
 
   this.release = function(path, fd, cb)

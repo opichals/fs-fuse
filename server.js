@@ -34,7 +34,9 @@ else
 }
 
 
-const fuse = new Fuse(path, FsFuse(fs), { debug: true });
+const fsFuse = FsFuse(fs);
+const fuse = new Fuse(path, fsFuse, { debug: true });
+fsFuse.errno = fuse.errno;
 fuse.mount(function(error)
 {
   if(error) console.error(argv[1]+' failed to mount:', error)
