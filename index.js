@@ -1,16 +1,17 @@
-const fuse      = require('fuse-bindings')
+const fuse      = require('fuse-native')
 const getStream = require('get-stream').buffer
 
 const ENOSYS = fuse.ENOSYS
-const errno  = fuse.errno
+const errno  = new fuse('/tmp/fuse-mount', {}, {}).errno
 
 
 const direct_mapping = ['chmod', 'chown', 'link', 'mkdir', 'open', 'readdir',
                         'readlink', 'rmdir', 'rename', 'symlink', 'unlink']
 
-const non_standard = ['fuse_access', 'create', 'destroy', 'flush', 'fsyncdir',
+const xnon_standard = ['fuse_access', 'create', 'destroy', 'flush', 'fsyncdir',
                       'getxattr', 'init', 'listxattr', 'mknod', 'opendir',
                       'releasedir', 'removexattr', 'setxattr', 'statfs']
+const non_standard = [];
 
 
 function fsCallback(error, ...args)

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const fuse  = require('fuse-bindings')
+const Fuse  = require('fuse-native')
 const parse = require('parse-mount-argv')
 
 const FsFuse = require('.')
@@ -34,14 +34,15 @@ else
 }
 
 
-fuse.mount(path, FsFuse(fs), function(error)
+const fuse = new Fuse(path, FsFuse(fs), { debug: true });
+fuse.mount(function(error)
 {
   if(error) console.error(argv[1]+' failed to mount:', error)
 })
 
 process.on('SIGINT', function()
 {
-  fuse.unmount(path, function(error)
+  fuse.unmount(function(error)
   {
     if(error) throw error
     process.exit()
