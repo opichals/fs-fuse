@@ -1,3 +1,4 @@
+const Fuse  = require('fuse-native')
 const getStream = require('get-stream').buffer
 
 const direct_mapping = ['chmod', 'chown', 'link', 'mkdir', 'open', 'readdir',
@@ -14,17 +15,7 @@ function FsFuse(fs)
   if(!(this instanceof FsFuse)) return new FsFuse(fs)
 
   const errno = function(codeName) {
-    // for the one from fuse-native.errno
-    if (this.errno) return this.errno(codeName);
-
-    // locally cached nodejs getSystemErrorMap errnos
-    if (this.errnos) return this.errnos[codeName];
-
-    this.errnos = {};
-    require('util').getSystemErrorMap().forEach(function ([name, desc], code) {
-        this.errnos[name] = code;
-    }, this);
-    return this.errnos[codeName];
+    return this.errno(codeName);
   }.bind(this)
   Object.defineProperty(this, 'ENOSYS', {
       get: function() {
@@ -233,4 +224,9 @@ function FsFuse(fs)
 }
 
 
-module.exports = FsFuse
+module.exports = function(path, fs, options) {
+    const fsFuse = FsFuse(fs);
+    fuse = new Fuse(path, fsFuse, options);
+    fsFuse.errno = fuse.errno;
+    return fuse;
+}

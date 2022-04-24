@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-const Fuse  = require('fuse-native')
 const parse = require('parse-mount-argv')
 
 const FsFuse = require('.')
@@ -34,9 +33,7 @@ else
 }
 
 
-const fsFuse = FsFuse(fs);
-const fuse = new Fuse(path, fsFuse, { debug: true });
-fsFuse.errno = fuse.errno;
+const fuse = new FsFuse(path, fs, { debug: true });
 fuse.mount(function(error)
 {
   if(error) console.error(argv[1]+' failed to mount:', error)
